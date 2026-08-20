@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SentinelTwin — AI-Driven Self-Healing IoT Network</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0a0e14;
+    --panel: #10161f;
+    --panel-2: #141c28;
+    --border: #223046;
+    --text: #d7e2f0;
+    --muted: #7a8ba3;
+    --accent: #22d3c8;
+    --accent-dim: #0e7f78;
+    --normal: #2fbf71;
+    --suspect: #e8b93f;
+    --anomalous: #ef5b5b;
+    --isolated: #8a8f9c;
+    --recovering: #4a9cff;
+    --recovered: #22d3c8;
+    --mono: 'Consolas', 'SFMono-Regular', Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: radial-gradient(circle at 20% 0%, #101927 0%, var(--bg) 55%);
+    color: var(--text); font-family: 'Segoe UI', Roboto, Arial, sans-serif; min-height: 100vh;
+  }
+  header {
+    padding: 18px 28px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: linear-gradient(180deg, rgba(34,211,200,0.06), transparent);
+  }
+  header .brand { display: flex; align-items: center; gap: 12px; }
+  header .brand .dot {
+    width: 12px; height: 12px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 12px var(--accent); animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: 0.5px; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+  #conn { font-family: var(--mono); font-size: 11px; padding: 5px 10px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
+  #conn.live { color: var(--normal); border-color: var(--normal); }
+
+  .layout { display: grid; grid-template-columns: 1fr 380px; gap: 16px; padding: 20px 28px 40px; }
+  @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+
+  .zone-block { margin-bottom: 22px; }
+  .zone-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin: 0 0 10px 2px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; position: relative; overflow: hidden; transition: border-color 0.3s;
+  }
+  .card::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+    background: var(--state-color, var(--normal));
+  }
+  .card .top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .card .id { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+  .card .type { color: var(--muted); font-size: 11px; margin-top: 1px; }
+  .badge {
+    font-size: 10px; padding: 2px 7px; border-radius: 20px; font-weight: 600;
+    background: color-mix(in srgb, var(--state-color, var(--normal)) 20%, transparent);
+    color: var(--state-color, var(--normal)); border: 1px solid var(--state-color, var(--normal));
+    white-space: nowrap;
+  }
+  .metrics { margin-top: 10px; font-family: var(--mono); font-size: 11px; color: var(--muted); display: grid; gap: 3px; }
+  .metrics span.v { color: var(--text); }
+  .trust-row { margin-top: 10px; }
+  .trust-label { font-size: 10px; color: var(--muted); display: flex; justify-content: space-between; margin-bottom: 3px; }
+  .trust-bar { height: 5px; background: #1c2635; border-radius: 4px; overflow: hidden; }
+  .trust-fill { height: 100%; background: linear-gradient(90deg, var(--anomalous), var(--suspect), var(--normal)); }
+  .cause { margin-top: 8px; font-size: 11px; color: var(--state-color, var(--suspect)); font-family: var(--mono); }
+  .live-hw {
+    margin-top: 8px; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #0a0e14;
+    background: var(--accent); display: inline-block; padding: 2px 8px; border-radius: 20px;
+  }
+  .actions { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .actions button {
+    flex: 1; min-width: 60px; background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+    font-size: 10px; padding: 5px 4px; border-radius: 5px; cursor: pointer; font-family: var(--mono);
+  }
+  .actions button:hover { border-color: var(--accent); color: var(--accent); }
+
+  .side { display: flex; flex-direction: column; gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); margin: 0 0 10px; }
+  .stat-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--border); font-size: 12px; }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-row b { color: var(--text); }
+
+  #log { height: 460px; overflow-y: auto; font-family: var(--mono); font-size: 11px; display: flex; flex-direction: column-reverse; gap: 6px; }
+  .log-entry { padding: 7px 8px; border-radius: 6px; background: var(--panel-2); border-left: 3px solid var(--muted); }
+  .log-entry .meta { color: var(--muted); font-size: 10px; margin-bottom: 2px; }
+  .log-entry.ANOMALY { border-color: var(--suspect); }
+  .log-entry.DIAGNOSIS { border-color: var(--anomalous); }
+  .log-entry.FIREWALL { border-color: #ff3b7a; background: rgba(255,59,122,0.08); }
+  .log-entry.RECOVERY { border-color: var(--recovering); }
+  .log-entry.VERIFIED { border-color: var(--recovered); }
+  .log-entry.INFO { border-color: var(--muted); }
+
+  .flow { display: flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 10px; flex-wrap: wrap; color: var(--muted); }
+  .flow b { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="dot"></div>
+    <div>
+      <h1>SentinelTwin</h1>
+      <p>AI-Driven Self-Healing IoT Network — Digital Twin + Real-Time Anomaly Diagnosis</p>
+    </div>
+  </div>
+  <div id="conn">connecting…</div>
+</header>
+
+<div class="layout">
+  <div id="zones"></div>
+
+  <div class="side">
+    <div class="panel">
+      <h2>Pipeline</h2>
+      <div class="flow">
+        <b>Monitor</b>→<b>Predict/Detect</b>→<b>Security Layer</b>→<b>Diagnose</b>→<b>Respond</b>→<b>Recover</b>→<b>Verify</b>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Network Health</h2>
+      <div id="stats"></div>
+    </div>
+
+    <div class="panel" style="flex:1;">
+      <h2>Live Event Log</h2>
+      <div id="log"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const stateColor = {
+  NORMAL: 'var(--normal)', SUSPECT: 'var(--suspect)', ANOMALOUS: 'var(--anomalous)',
+  ISOLATED: 'var(--isolated)', RECOVERING: 'var(--recovering)', RECOVERED: 'var(--recovered)'
+};
+
+let ws;
+function connect() {
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+  const conn = document.getElementById('conn');
+  ws.onopen = () => { conn.textContent = '● LIVE'; conn.classList.add('live'); };
+  ws.onclose = () => { conn.textContent = 'reconnecting…'; conn.classList.remove('live'); setTimeout(connect, 1500); };
+  ws.onmessage = (ev) => render(JSON.parse(ev.data));
+}
+connect();
+
+function fmtMetrics(vals) {
+  return Object.entries(vals).map(([k,v]) => `<div>${k}: <span class="v">${typeof v === 'number' ? v.toFixed(1) : v}</span></div>`).join('');
+}
+
+function render(data) {
+  const devices = data.devices;
+  const zones = {};
+  devices.forEach(d => { (zones[d.zone] = zones[d.zone] || []).push(d); });
+
+  const zonesEl = document.getElementById('zones');
+  zonesEl.innerHTML = Object.entries(zones).map(([zone, devs]) => `
+    <div class="zone-block">
+      <div class="zone-title">${zone}</div>
+      <div class="grid">
+        ${devs.map(cardHtml).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  // wire up buttons
+  zonesEl.querySelectorAll('[data-inject]').forEach(btn => {
+    btn.onclick = () => fetch(`/api/devices/${btn.dataset.id}/inject`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({fault_type: btn.dataset.inject})
+    });
+  });
+  zonesEl.querySelectorAll('[data-clear]').forEach(btn => {
+    btn.onclick = () => fetch(`/api/devices/${btn.dataset.id}/clear`, {method: 'POST'});
+  });
+
+  // stats
+  const counts = {};
+  devices.forEach(d => counts[d.state] = (counts[d.state]||0)+1);
+  document.getElementById('stats').innerHTML = Object.entries(counts).map(([s,c]) =>
+    `<div class="stat-row"><span>${s}</span><b style="color:${stateColor[s]}">${c}</b></div>`
+  ).join('') + `<div class="stat-row"><span>Total devices</span><b>${devices.length}</b></div>`;
+
+  // log
+  const logEl = document.getElementById('log');
+  logEl.innerHTML = data.events.map(e => `
+    <div class="log-entry ${e.kind}">
+      <div class="meta">${new Date(e.ts*1000).toLocaleTimeString()} · ${e.device_id} · ${e.kind}</div>
+      <div>${e.message}</div>
+    </div>
+  `).join('');
+}
+
+function cardHtml(d) {
+  const color = stateColor[d.state] || 'var(--normal)';
+  const trustPct = Math.round(d.trust_score * 100);
+  const causeHtml = d.root_cause ? `<div class="cause">⚠ ${d.root_cause} (${Math.round(d.root_cause_confidence*100)}% conf.)</div>` : '';
+  const rerouteHtml = d.rerouted_to ? `<div class="cause" style="color:var(--recovering)">↪ rerouted → ${d.rerouted_to}</div>` : '';
+  const backupTag = d.is_backup ? ' · standby' : '';
+  const liveTag = d.is_real ? `<div class="live-hw">🛰 LIVE HARDWARE</div>` : '';
+  const fwTag = d.firewall_blocked ? `<div class="live-hw" style="background:#ff3b7a;color:#fff">🛡 FIREWALL BLOCKED</div>` : '';
+  const actions = d.is_backup ? '' : `
+    <div class="actions">
+      <button data-id="${d.device_id}" data-inject="HARDWARE">HW fault</button>
+      <button data-id="${d.device_id}" data-inject="NETWORK">Net fault</button>
+      <button data-id="${d.device_id}" data-inject="DRIFT">Drift</button>
+      <button data-id="${d.device_id}" data-inject="MALICIOUS">Spoof</button>
+      <button data-id="${d.device_id}" data-clear="1">Reset</button>
+    </div>`;
+  return `
+    <div class="card" style="--state-color:${color}">
+      <div class="top">
+        <div>
+          <div class="id">${d.device_id}</div>
+          <div class="type">${d.device_type}${backupTag}</div>
+        </div>
+        <div class="badge">${d.state}</div>
+      </div>
+      ${liveTag}
+      ${fwTag}
+      <div class="metrics">${fmtMetrics(d.last_values)}</div>
+      <div class="trust-row">
+        <div class="trust-label"><span>trust</span><span>${trustPct}%</span></div>
+        <div class="trust-bar"><div class="trust-fill" style="width:${trustPct}%"></div></div>
+      </div>
+      ${causeHtml}
+      ${rerouteHtml}
+      ${actions}
+    </div>
+  `;
+}
+</script>
+
+</body>
+</html>
