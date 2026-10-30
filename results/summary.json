@@ -1,0 +1,471 @@
+{
+  "rq1": {
+    "episodes": 330,
+    "first_diagnosis_accuracy": 0.9606,
+    "macro_f1_first": 0.9684,
+    "final_accuracy": 0.9818,
+    "verified_recovery_rate": 1.0,
+    "false_quarantine_rate_benign": 0.0167,
+    "collateral_incidents_per_episode": 0.033,
+    "gateway_child_isolations": 0
+  },
+  "learned_baseline": {
+    "rule_arbitration": 0.9576,
+    "decision_tree_depth4": 0.897,
+    "random_forest_200": 0.8788
+  },
+  "ablation": {
+    "full": {
+      "final_correct": 0.9939,
+      "exposure": 5.36,
+      "outage": 0.59,
+      "false_quarantine": 0.0222,
+      "false_recovery": 0.0
+    },
+    "no_security_layer": {
+      "final_correct": 0.903,
+      "exposure": 5.36,
+      "outage": 0.59,
+      "false_quarantine": 0.0222,
+      "false_recovery": 0.0
+    },
+    "no_consensus": {
+      "final_correct": 0.5636,
+      "exposure": 8.25,
+      "outage": 0.88,
+      "false_quarantine": 0.0889,
+      "false_recovery": 0.0
+    },
+    "rolling_only": {
+      "final_correct": 0.7273,
+      "exposure": 59.95,
+      "outage": 0.47,
+      "false_quarantine": 0.0,
+      "false_recovery": 0.0
+    },
+    "no_provenance": {
+      "final_correct": 0.9273,
+      "exposure": 6.12,
+      "outage": 0.59,
+      "false_quarantine": 0.0222,
+      "false_recovery": 0.0
+    },
+    "no_comovement": {
+      "final_correct": 1.0,
+      "exposure": 6.19,
+      "outage": 0.59,
+      "false_quarantine": 0.0111,
+      "false_recovery": 0.0
+    },
+    "no_rate_prior": {
+      "final_correct": 0.9515,
+      "exposure": 5.22,
+      "outage": 0.59,
+      "false_quarantine": 0.0333,
+      "false_recovery": 0.0
+    },
+    "argmax_policy": {
+      "final_correct": 0.9636,
+      "exposure": 5.02,
+      "outage": 0.96,
+      "false_quarantine": 0.2,
+      "false_recovery": 0.0
+    },
+    "naive_restart": {
+      "final_correct": 0.8,
+      "exposure": 15.02,
+      "outage": 4.59,
+      "false_quarantine": 0.0,
+      "false_recovery": 0.2061
+    },
+    "no_heal": {
+      "final_correct": 0.6727,
+      "exposure": 20.63,
+      "outage": 60.17,
+      "false_quarantine": 0.0,
+      "false_recovery": 0.1818
+    },
+    "no_verification": {
+      "final_correct": 0.5273,
+      "exposure": 29.15,
+      "outage": 20.57,
+      "false_quarantine": 0.1778,
+      "false_recovery": 0.5091
+    },
+    "permanent_block": {
+      "final_correct": 0.9939,
+      "exposure": 5.32,
+      "outage": 3.3,
+      "false_quarantine": 0.0333,
+      "false_recovery": 0.0
+    },
+    "device_scoped_block": {
+      "final_correct": 0.9939,
+      "exposure": 5.36,
+      "outage": 0.59,
+      "false_quarantine": 0.0222,
+      "false_recovery": 0.0
+    },
+    "rate_mu3sigma": {
+      "final_correct": 0.903,
+      "exposure": 3.73,
+      "outage": 0.59,
+      "false_quarantine": 0.0222,
+      "false_recovery": 0.0
+    },
+    "with_mac": {
+      "final_correct": 0.9939,
+      "exposure": 1.53,
+      "outage": 1.05,
+      "false_quarantine": 0.0222,
+      "false_recovery": 0.0
+    }
+  },
+  "rq3": {
+    "benign drift (P diagnosed drift)": [
+      [
+        0.05,
+        0.7
+      ],
+      [
+        0.1,
+        0.833
+      ],
+      [
+        0.2,
+        0.733
+      ],
+      [
+        0.3,
+        0.767
+      ],
+      [
+        0.4,
+        0.733
+      ],
+      [
+        0.6,
+        0.367
+      ],
+      [
+        0.8,
+        0.233
+      ],
+      [
+        1.0,
+        0.167
+      ]
+    ],
+    "fabricate": [
+      [
+        0.05,
+        0.733
+      ],
+      [
+        0.1,
+        0.767
+      ],
+      [
+        0.2,
+        0.633
+      ],
+      [
+        0.3,
+        0.833
+      ],
+      [
+        0.4,
+        0.8
+      ],
+      [
+        0.6,
+        0.5
+      ],
+      [
+        0.8,
+        0.6
+      ],
+      [
+        1.0,
+        0.633
+      ]
+    ],
+    "fabricate +MAC": [
+      [
+        0.05,
+        1.0
+      ],
+      [
+        0.1,
+        1.0
+      ],
+      [
+        0.2,
+        1.0
+      ],
+      [
+        0.3,
+        1.0
+      ],
+      [
+        0.4,
+        1.0
+      ],
+      [
+        0.6,
+        1.0
+      ],
+      [
+        0.8,
+        1.0
+      ],
+      [
+        1.0,
+        1.0
+      ]
+    ],
+    "inpath": [
+      [
+        0.05,
+        0.267
+      ],
+      [
+        0.1,
+        0.2
+      ],
+      [
+        0.2,
+        0.167
+      ],
+      [
+        0.3,
+        0.1
+      ],
+      [
+        0.4,
+        0.167
+      ],
+      [
+        0.6,
+        0.533
+      ],
+      [
+        0.8,
+        0.667
+      ],
+      [
+        1.0,
+        0.7
+      ]
+    ],
+    "inpath +MAC": [
+      [
+        0.05,
+        1.0
+      ],
+      [
+        0.1,
+        1.0
+      ],
+      [
+        0.2,
+        1.0
+      ],
+      [
+        0.3,
+        1.0
+      ],
+      [
+        0.4,
+        1.0
+      ],
+      [
+        0.6,
+        1.0
+      ],
+      [
+        0.8,
+        1.0
+      ],
+      [
+        1.0,
+        1.0
+      ]
+    ],
+    "rogue": [
+      [
+        0.05,
+        1.0
+      ],
+      [
+        0.1,
+        0.967
+      ],
+      [
+        0.2,
+        1.0
+      ],
+      [
+        0.3,
+        1.0
+      ],
+      [
+        0.4,
+        0.933
+      ],
+      [
+        0.6,
+        0.867
+      ],
+      [
+        0.8,
+        0.833
+      ],
+      [
+        1.0,
+        0.833
+      ]
+    ],
+    "rogue +MAC": [
+      [
+        0.05,
+        1.0
+      ],
+      [
+        0.1,
+        1.0
+      ],
+      [
+        0.2,
+        1.0
+      ],
+      [
+        0.3,
+        1.0
+      ],
+      [
+        0.4,
+        1.0
+      ],
+      [
+        0.6,
+        1.0
+      ],
+      [
+        0.8,
+        1.0
+      ],
+      [
+        1.0,
+        1.0
+      ]
+    ],
+    "compromised": [
+      [
+        0.05,
+        0.267
+      ],
+      [
+        0.1,
+        0.2
+      ],
+      [
+        0.2,
+        0.167
+      ],
+      [
+        0.3,
+        0.1
+      ],
+      [
+        0.4,
+        0.167
+      ],
+      [
+        0.6,
+        0.533
+      ],
+      [
+        0.8,
+        0.667
+      ],
+      [
+        1.0,
+        0.7
+      ]
+    ],
+    "compromised +MAC": [
+      [
+        0.05,
+        0.267
+      ],
+      [
+        0.1,
+        0.2
+      ],
+      [
+        0.2,
+        0.167
+      ],
+      [
+        0.3,
+        0.1
+      ],
+      [
+        0.4,
+        0.167
+      ],
+      [
+        0.6,
+        0.533
+      ],
+      [
+        0.8,
+        0.667
+      ],
+      [
+        1.0,
+        0.7
+      ]
+    ]
+  },
+  "env": {
+    "full": {
+      "false_incidents_per_heatwave": 0.033,
+      "drift_found_during_heatwave": 0.9667
+    },
+    "no_consensus": {
+      "false_incidents_per_heatwave": 17.167,
+      "drift_found_during_heatwave": 0.0667
+    }
+  },
+  "trust": {
+    "ema": {
+      "late_mean_trust": 0.2144,
+      "exposure": 11.1
+    },
+    "asym": {
+      "late_mean_trust": 0.0556,
+      "exposure": 11.1
+    },
+    "beta": {
+      "late_mean_trust": 0.277,
+      "exposure": 11.1
+    }
+  },
+  "false_alarms_per_device_hour": {
+    "full": 0.0167,
+    "no_consensus": 5.25
+  },
+  "intel": {
+    "episodes": 330,
+    "first_diagnosis_accuracy": 0.9515,
+    "macro_f1_first": 0.9572,
+    "final_accuracy": 0.9848,
+    "verified_recovery_rate": 0.9939,
+    "false_quarantine_rate_benign": 0.0444,
+    "collateral_incidents_per_episode": 0.045,
+    "gateway_child_isolations": 0,
+    "false_alarms_per_device_hour": 0.0278
+  }
+}

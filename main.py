@@ -1,24 +1,19 @@
 """
 main.py
 -------
-SentinelTwin backend. Runs an asyncio background loop that, every TICK
-seconds:
-  1. advances the simulated IoT network (simulator.py)
-  2. scores every device for anomalies (anomaly_detector.py)
-  3. diagnoses root cause for newly SUSPECT devices (diagnosis.py)
-  4. updates trust scores (trust.py)
-  5. drives the self-healing recovery state machine (recovery.py)
-  6. broadcasts the full network snapshot + event log to every
-     connected dashboard over a WebSocket
+SentinelTwin live server. Runs the SentinelEngine (engine.py) on wall-clock
+time, one tick every 1.5 s, and broadcasts the network snapshot, the
+explainable event log and the incident timeline to every dashboard over a
+WebSocket. Real hardware joins through the MQTT bridge (mqtt_bridge.py)
+and goes through exactly the same ingestion and pipeline.
 
-REST endpoints let the frontend (or a demo script) inject faults on
-demand and fetch the current snapshot/event log.
+    uvicorn main:app --reload --port 8000
 """
 
 from __future__ import annotations
 import asyncio
-import time
-from typing import List
+import os
+from typing import List, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,85 +21,21 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from digital_twin import DigitalTwinRegistry, DeviceState
-from simulator import NetworkSimulator, FaultMode
+from engine import SentinelEngine
 from mqtt_bridge import start_mqtt_bridge
-from security import Firewall, RateTracker, fast_attack_check
-import anomaly_detector
-import diagnosis
-import trust
-import recovery
+from simulator import FaultMode, TICK_SECONDS
 
-TICK_SECONDS = 1.5
+app = FastAPI(title="SentinelTwin API", version="2.0.0")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-app = FastAPI(title="SentinelTwin API", version="1.0.0")
-app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
-)
-
-registry = DigitalTwinRegistry()
-sim = NetworkSimulator(registry)
-sim.build_default_network()
-firewall = Firewall()
-rate_tracker = RateTracker()
-
-event_log: List[dict] = []
+engine = SentinelEngine(seed=int(os.environ["SENTINELTWIN_SEED"]) if "SENTINELTWIN_SEED" in os.environ else None)
 connected_sockets: List[WebSocket] = []
-
-
-def _log_event(kind: str, device_id: str, message: str) -> None:
-    event_log.append({
-        "ts": round(time.time(), 2),
-        "kind": kind,          # INFO | ANOMALY | DIAGNOSIS | RECOVERY | VERIFIED
-        "device_id": device_id,
-        "message": message,
-    })
-    if len(event_log) > 300:
-        del event_log[: len(event_log) - 300]
-
-
-def run_pipeline_tick() -> None:
-    sim.tick_all()
-
-    for twin in registry.all():
-        prev_state = twin.state
-        prev_log_len = len(twin.recovery_log)
-
-        anomaly_detector.evaluate(twin)
-        if twin.state == DeviceState.SUSPECT and prev_state != DeviceState.SUSPECT:
-            _log_event("ANOMALY", twin.device_id, f"Anomaly suspected (score={twin.last_anomaly_score:.2f}).")
-
-        # SECURITY LAYER - runs after detection, before diagnosis. A clear
-        # attack pattern gets blocked immediately (fast-path); anything
-        # else falls through to the normal, slower, explainable diagnosis.
-        blocked_cause = fast_attack_check(twin, firewall)
-        if blocked_cause is None:
-            diagnosis.diagnose(twin)
-        trust.update_trust(twin)
-        recovery.handle_anomalous(twin, registry, sim)
-        recovery.progress_recovery(twin, firewall)
-
-        if len(twin.recovery_log) > prev_log_len:
-            for new_msg in twin.recovery_log[prev_log_len:]:
-                if new_msg.startswith("[FIREWALL]"):
-                    kind = "FIREWALL"
-                elif new_msg.startswith("[DIAGNOSIS]"):
-                    kind = "DIAGNOSIS"
-                else:
-                    kind = "RECOVERY"
-                if "VERIFIED" in new_msg:
-                    kind = "VERIFIED"
-                _log_event(kind, twin.device_id, new_msg.split("] ", 1)[-1])
 
 
 async def broadcast_loop() -> None:
     while True:
-        run_pipeline_tick()
-        payload = {
-            "devices": registry.snapshot(),
-            "events": event_log[-40:],
-            "server_time": round(time.time(), 2),
-        }
+        engine.tick()
+        payload = engine.snapshot()
         dead = []
         for ws in connected_sockets:
             try:
@@ -120,53 +51,68 @@ async def broadcast_loop() -> None:
 @app.on_event("startup")
 async def startup() -> None:
     asyncio.create_task(broadcast_loop())
-    start_mqtt_bridge(registry, firewall, rate_tracker, log_event=_log_event)
+    start_mqtt_bridge(engine, log_event=engine.log_event)
 
 
 @app.get("/api/devices")
 def get_devices():
-    return registry.snapshot()
+    return engine.registry.snapshot()
 
 
 @app.get("/api/events")
 def get_events():
-    return event_log[-100:]
+    return engine.events[-100:]
+
+
+@app.get("/api/incidents")
+def get_incidents():
+    return engine.incidents.recent(100)
 
 
 class InjectRequest(BaseModel):
-    fault_type: str  # HARDWARE | NETWORK | DRIFT | MALICIOUS
+    fault_type: str                     # HARDWARE|STUCK|DROPOUT|NETWORK|GATEWAY|DRIFT|TAMPER|TAMPER_RAMP|ON_OFF|FLOOD|SPOOF
+    attacker: Optional[str] = None      # TAMPER_RAMP: fabricate | inpath | rogue | compromised
+    slope: Optional[float] = None       # TAMPER_RAMP / DRIFT speed (noise sigma per reading)
 
 
 @app.post("/api/devices/{device_id}/inject")
 def inject_fault(device_id: str, req: InjectRequest):
-    sim_dev = sim.get(device_id)
-    if not sim_dev:
-        raise HTTPException(404, f"Unknown device {device_id}")
     try:
         mode = FaultMode(req.fault_type.upper())
     except ValueError:
         raise HTTPException(400, f"Unknown fault_type {req.fault_type}")
     if mode == FaultMode.NONE:
         raise HTTPException(400, "Use /clear to remove a fault")
-    sim_dev.inject_fault(mode)
-    _log_event("INFO", device_id, f"Manual fault injected: {mode.value}")
-    return {"status": "ok", "device_id": device_id, "fault_type": mode.value}
+    params = {}
+    if req.attacker:
+        params["attacker"] = req.attacker
+    if req.slope is not None:
+        params["slope" if mode == FaultMode.TAMPER_RAMP else "rate"] = req.slope
+    try:
+        engine.inject(device_id, mode.value, **params)
+    except KeyError:
+        raise HTTPException(404, f"Unknown simulated device {device_id}")
+    return {"status": "ok", "device_id": device_id, "fault_type": mode.value, **params}
 
 
 @app.post("/api/devices/{device_id}/clear")
 def clear_fault(device_id: str):
-    sim_dev = sim.get(device_id)
-    if not sim_dev:
+    if engine.registry.get(device_id) is None:
         raise HTTPException(404, f"Unknown device {device_id}")
-    sim_dev.clear_fault()
-    twin = registry.get(device_id)
-    if twin:
-        twin.state = DeviceState.NORMAL
-        twin.root_cause = None
-        twin.root_cause_confidence = 0.0
-        twin.history.clear()
-    _log_event("INFO", device_id, "Fault manually cleared, device reset to NORMAL.")
+    engine.clear(device_id)
     return {"status": "ok"}
+
+
+class ZoneEventRequest(BaseModel):
+    magnitude_t: float = 5.0
+
+
+@app.post("/api/zones/{zone}/heatwave")
+def heatwave(zone: str, req: ZoneEventRequest):
+    if engine.sim is None or zone not in engine.sim.zones:
+        raise HTTPException(404, f"Unknown zone {zone}")
+    engine.zone_event(zone, magnitude_t=req.magnitude_t)
+    return {"status": "ok", "zone": zone}
 
 
 @app.websocket("/ws")
@@ -174,13 +120,9 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     connected_sockets.append(websocket)
     try:
-        await websocket.send_json({
-            "devices": registry.snapshot(),
-            "events": event_log[-40:],
-            "server_time": round(time.time(), 2),
-        })
+        await websocket.send_json(engine.snapshot())
         while True:
-            await websocket.receive_text()  # keep connection alive; ignore input
+            await websocket.receive_text()  # keep the connection alive; input ignored
     except WebSocketDisconnect:
         if websocket in connected_sockets:
             connected_sockets.remove(websocket)

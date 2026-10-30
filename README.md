@@ -1,212 +1,184 @@
 # SentinelTwin
-### AI-Driven Self-Healing IoT Network Using Digital Twin Technology
+### An explainable digital-twin framework that tells a broken IoT sensor from a lying one, heals it, and proves the fix held
 
-A working prototype of the pipeline:
+SentinelTwin keeps a live **digital twin** of every IoT device and runs a closed loop over it:
 
 ```
-Monitor → Predict/Detect → Security Layer → Diagnose → Respond → Recover → Verify
+Monitor → Detect → Security Layer → Diagnose (evidence) → Respond (expected cost) → Recover → Verify
 ```
 
-instead of the conventional IoT flow (`Monitor → Detect failure → Human
-intervention → Repair`).
+Most IoT anomaly detectors stop at "something is wrong". SentinelTwin answers three harder questions,
+which the literature review in [`reports/`](reports/) found are still open:
+
+1. **Is it a fault or an attack?** One explainable diagnoser separates hardware faults, network and
+   gateway failures, sensor drift and real environment changes from tampering, *drift-shaped* false-data
+   injection, DoS floods and identity spoofing, on the same telemetry.
+2. **What should we do when we are not sure?** Actions are chosen by *expected cost* over the cause
+   probabilities, so under genuine drift-vs-attack ambiguity the system distrusts the data and keeps
+   gathering evidence instead of guessing.
+3. **Did the fix actually work?** Every action is verified afterwards against the device's last
+   *verified* calibration. A failed verification means the diagnosis was wrong, and the loop escalates.
+
+![SentinelTwin dashboard: a stealthy ramp attack pulling away from its zone consensus](docs/dashboard.png)
+
+It runs on a simulated fleet, on **replayed real indoor physics** (Intel Berkeley Lab traces) and on
+**real ESP32 + DHT22 hardware** over MQTT, all through the identical code path.
 
 ---
 
-## What's actually implemented
+## Headline results
 
-A simulated IoT network of **temperature, humidity, and motion sensors
-plus gateways** across 3 zones, each with a **Digital Twin** (live
-software mirror of its state, history, trust score, and lifecycle).
-Every 1.5s tick:
+All numbers are measured, seeded and reproducible (`python -m experiments.run_all && python -m experiments.report`).
+Full tables with 95% confidence intervals are in [`results/RESULTS.md`](results/RESULTS.md); figures are in
+[`results/figs/`](results/figs/).
 
-1. **Simulator** (`simulator.py`) generates realistic correlated
-   telemetry per device, and can be pushed into 4 fault modes:
-   `HARDWARE`, `NETWORK`, `DRIFT`, `MALICIOUS`.
-2. **Anomaly Detector** (`anomaly_detector.py`) scores every device
-   using two complementary, fully-explainable statistics — no
-   black-box model:
-   - a **rolling z-score** against the last ~9 ticks (catches sudden
-     changes)
-   - a **frozen calibration baseline** z-score captured once early in
-     the device's life (catches slow drift that a rolling window can't
-     see, since the window itself drifts along with the signal)
-3. **Security Layer** (`security.py`) — sits between detection and
-   diagnosis. See below.
-4. **Diagnosis** (`diagnosis.py`) turns a flagged device into one of
-   four explained root causes by reading the *shape* of those two
-   scores — e.g. one metric far from its original baseline but moving
-   gradually → `SENSOR_DRIFT`.
-5. **Trust** (`trust.py`) maintains an exponential-moving-average trust
-   score per device, with an extra penalty for tampering.
-6. **Recovery** (`recovery.py`) autonomously responds per root cause —
-   isolate + reroute, isolate + activate backup, soft recalibrate, or
-   quarantine — then **verifies** the fix over several clean ticks
-   before marking the device `RECOVERED`.
-7. **main.py** runs this loop over WebSocket, broadcasting the full
-   network state + a live explainable event log to the dashboard.
-8. **static/index.html** is a dark-themed real-time dashboard: device
-   cards grouped by zone, trust bars, live root-cause explanations,
-   reroute arrows, firewall-blocked badges, and a scrolling event log —
-   plus buttons to inject any of the 4 fault types live for a demo.
+5,390 seeded episodes in total. Parameters were chosen only on development seeds 1000–1019 (`experiments/tune.py`),
+never on the 30 evaluation seeds reported here.
 
-## Root-cause classes (diagnosis.py — non-adversarial faults)
+| Question | Result |
+|---|---|
+| Does it diagnose the right cause? (11 fault/attack types, simulated physics) | **96.1%** first-diagnosis accuracy (macro-F1 0.968), **98.2%** after closed-loop escalation, **100%** verified recovery |
+| …on **real** indoor physics (Intel Berkeley Lab traces replayed)? | **95.2%** first diagnosis (macro-F1 0.957), 98.5% final, 99.4% verified recovery |
+| Explainable rules vs. learned models on the same evidence | **95.8%** vs. decision tree 89.7% and random forest 87.9%, with no training data needed |
+| False alarms in fault-free operation | **0.017** incidents per device-hour (simulated), **0.028** (real traces); **5.25** without zone consensus |
+| A real zone-wide heatwave (+6 °C) | **0.03** false incidents with zone consensus vs. **17.2** without it; a sensor drifting *during* the heatwave is still found in 96.7% of runs (6.7% without consensus) |
+| A failed gateway | 100% diagnosed as the root cause; **0** of its child devices isolated |
+| Benign faults wrongly quarantined | **2.2%** with expected-cost response vs. **20.0%** when acting on the most likely cause alone |
+| What if recovery is not verified? | **50.9%** of "recoveries" are false, and 64.9 child isolations per gateway failure (alarm storm) vs. 0 |
+| Slow drift-shaped false-data injection | rogue publishers recognised in 83–100% of cases at every slope; with a per-device MAC, fabricated, in-path and rogue forgeries are 100% rejected before reaching the data |
+| The honest limit: a *compromised* device ramping its true readings | indistinguishable from drift on first diagnosis at slow slopes (10–27% recognised below 0.4 σ/reading), yet **92.1%** end up contained because recalibration fails verification and the loop escalates |
+| Trust under an on-off attacker | asymmetric trust holds a repeat offender at **0.06** vs. 0.21 (symmetric EMA) and 0.28 (beta reputation) |
 
-| Root cause | Signature | Recovery action |
-|---|---|---|
-| `HARDWARE_FAULT` | one metric jumps instantly, everything else (incl. signal) normal | isolate + activate backup device |
-| `NETWORK_FAILURE` | signal_strength collapses, packet_loss rises | isolate + reroute data to standby |
-| `SENSOR_DRIFT` | one metric wanders far from its *original* calibration baseline, but tick-to-tick change is small | soft recalibrate in place (no isolation) |
+![Separability of drift-shaped tampering from drift](results/figs/fig_separability_curve.png)
 
-## Security Layer (security.py — adversarial/attack classes)
+**Known weak spots, reported as measured:** on real traces 23% of benign drifts are first quarantined (all later
+recovered); a slow ramp attack can be mistaken for a single-sensor hardware fault before escalation corrects it; all
+timings are in simulated time, and the Intel traces are replayed about 20× faster than real time, which makes their
+dynamics harsher than reality. The real-trace suite exposed one design flaw during development (jumps judged on raw
+values rather than relative to peers); it was fixed and every suite was re-run.
 
-Positioned explicitly between detection and diagnosis, because the
-two should not be the same step (see Research Foundation below). It
-runs a **fast, aggressive** attack check immediately after a device is
-flagged `SUSPECT`, before the slower, explainable diagnosis stage even
-runs. If it finds a clear attack signature, it **firewalls the device
-— a real, time-boxed block that other code actually enforces** —
-instead of waiting for full diagnosis.
+---
 
-| Attack | How it's detected | Where it's enforced |
-|---|---|---|
-| `MALICIOUS_TAMPERING` (fast-path) | 2+ metrics jump instantly past a strict z-score threshold in a single tick | `security.fast_attack_check()`, called every tick in `main.py` before `diagnosis.diagnose()` |
-| `DOS_FLOOD_ATTACK` | Message rate for a device exceeds ~5× its own learned normal cadence | `security.enforce_on_ingest()`, called by `mqtt_bridge.py` **before a message is ever written to the twin** |
-| `IDENTITY_SPOOFING` | A device_id publishes a `device_type` that conflicts with what it registered as | Same ingestion point in `mqtt_bridge.py` |
+## What is new here (and what is not)
 
-The firewall (`security.Firewall`) blocks a device_id for a time-boxed
-window that **escalates on repeat offenses** (30s → 60s → 120s →
-240s, capped at 300s). While blocked:
-- A real MQTT device's messages are silently dropped at the bridge —
-  the connection is actually cut, not just visually marked.
-- A simulated device is isolated the same way `ISOLATED` already stops
-  the simulator feed.
-- Recovery's verification clock (`recovery.progress_recovery`)
-  **can't even start counting clean ticks until the firewall block
-  itself expires** — the security layer's decision holds priority over
-  the ordinary recovery loop.
+The building blocks are not new: per-device twins, z-score detection, EMA trust, MAPE-K style self-healing
+and rate-based DoS detection all exist in prior work (see the research report). The contributions are in
+how they connect and in what is measured:
 
-Tested and verified live: injected a fast malicious spoof on a
-simulated device (correctly firewalled before diagnosis ran), flooded
-a real MQTT topic via `tools/test_publisher.py --fault flood`
-(correctly detected and blocked), and published a real
-identity-mismatched MQTT message via `mosquitto_pub` (correctly
-detected and blocked) — all against a locally running Mosquitto broker.
+| Contribution | Where |
+|---|---|
+| **Zone consensus**: co-located devices measure the same physics, so a leave-one-out, trust-weighted median tells "the sensor is wrong" from "the room changed" | `consensus.py` |
+| **Evidence-based fault/attack arbitration** with an explicit threat model: every diagnosis is a probability per cause plus the human-readable evidence lines that produced it | `diagnosis.py` |
+| **Drift vs. drift-shaped tampering**: physical aging-rate prior, co-movement with the room's physics, transport provenance (sequence numbers, publisher fingerprint, optional per-device HMAC) | `diagnosis.py`, `security.py`, `ingest.py` |
+| **Expected-cost response under uncertainty**, including a `DISTRUST_DATA` containment action, plus a pre-action safety check on standby coverage | `response.py` |
+| **Post-action verification** against the last verified offset (re-learning cannot launder an attacker's offset), with escalation and phase-level timestamps | `recovery.py`, `incidents.py` |
+| **Measured cost of misdiagnosis**: false quarantines, false recoveries, wrong readings accepted, outage, collateral drops | `experiments/` |
+| **Alarm-storm suppression**: a failed gateway is diagnosed as the root cause; its children are not isolated | `diagnosis.py` (`UPSTREAM_FAILURE`) |
+| **Fingerprint-scoped quarantine**: block only an impostor publisher, keep the genuine device online | `security.py`, `ingest.py` |
+| **SentinelTwin-Bench**: a labelled trace with benign faults, drift, environment events and attacks on the same telemetry | `tools/export_dataset.py` |
 
-## Research Foundation
+**Honest limits** (also measured, not hidden): a compromised device that adds a slow ramp to its true
+readings with valid credentials is, on telemetry alone, indistinguishable from drift. SentinelTwin first
+calls it drift, and catches it only when recalibration fails verification (see RQ3). A frozen per-device
+baseline cannot separate drift from real environment change without peers; zones need at least three
+co-located sensors of a quantity. Reconnaissance (scans) is not addressed.
 
-The Security Layer's design choices are grounded in current published
-work on digital-twin-based IoT security, not invented from scratch:
+---
 
-- **Splitting fast detection from slow diagnosis is empirically
-  better than one combined stage.** A digital-twin + blockchain IoT
-  security study (*Causio-TwinChain*, Scientific Reports) paired a
-  fast anomaly-flagging stage with a separate causal root-cause stage
-  and measured a 68% cut in mean time-to-diagnosis and a 22% drop in
-  false positives versus combining both into one step — directly
-  motivating why the security layer runs *before*, not *inside*,
-  `diagnosis.py`.
-- **Simple statistical rate-monitoring is a legitimate first line of
-  defense for digital-twin traffic specifically**, because that
-  traffic is cyclical and predictable (periodic sensor reports),
-  unlike general IT network traffic. A 2025 data-rate-monitoring study
-  for digital twin communication validated a lightweight statistical
-  threshold approach and found DoS attacks produced roughly a 50×
-  spike in packet rate against the normal baseline — this is exactly
-  what `security.RateTracker` implements (learn a per-device baseline
-  cadence, flag a large multiple of it), rather than reaching for a
-  trained ML model where simple statistics are already sufficient and
-  fully explainable.
-- **Digital twins are well suited to catching a compromised node that
-  either emits false data or is used to attack its neighbors** (IEEE,
-  fog-based digital twin "Compromised Node Detection" architecture) —
-  motivating why a flagged device here is firewalled off the network
-  entirely, not just flagged for review.
-- A broader Digital Twin + IDS study (Snort + Eclipse Ditto on a
-  Raspberry Pi, testing real Hping3 flood attacks and NMAP scans)
-  found flood-style attacks were reliably caught by rate-based methods
-  while reconnaissance-style scans were not — an honest limitation
-  that also applies here (see "Ideas to extend further").
+## Architecture
+
+| Module | Role |
+|---|---|
+| `simulator.py` | Physically-grounded testbed: per-zone environment (diurnal cycle, random walk, heatwaves, or real traces), 12 injectable fault/attack modes with ground truth and realistic action efficacy |
+| `ingest.py` | Single ingestion boundary for simulated **and** real messages: firewall, flood, identity, provenance, MAC |
+| `consensus.py` | Zone consensus and per-device residuals |
+| `anomaly_detector.py` | Point, residual, baseline, stuck and dropout scores, with a running noise estimate |
+| `security.py` | Escalating time-boxed firewall (device- or publisher-scoped), rate tracker (learned cadence ×5 or μ+3σ), provenance, fast-path tampering check |
+| `diagnosis.py` | Evidence collection and arbitration into cause probabilities |
+| `trust.py` | Symmetric EMA, asymmetric EMA (with a ceiling for repeat offenders), beta reputation |
+| `response.py` | Expected-cost policy plus the baseline policies (argmax, naive restart, no healing) |
+| `recovery.py` | Actions, containment, verification, escalation |
+| `engine.py` | One tick of the whole loop; used by both the server and the experiments |
+| `config.py` | Every switch the evaluation ablates |
+| `clock.py` | Wall clock for the server, simulated clock for experiments (fast and exactly reproducible) |
+| `main.py`, `static/index.html` | FastAPI + WebSocket live dashboard |
+| `mqtt_bridge.py`, `arduino/`, `tools/` | Real hardware path, hardware campaign, test publisher, dataset export |
+
+---
 
 ## Run it
 
 ```bash
+python -m venv .venv && .venv/Scripts/activate      # Windows; use .venv/bin/activate elsewhere
 pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+uvicorn main:app --reload --port 8000                 # dashboard at http://localhost:8000
 ```
 
-Open `http://localhost:8000`. The network starts clean; give it
-~15 seconds to build a calibration baseline, then click any of the
-`HW fault / Net fault / Drift / Spoof` buttons on a device card to
-watch the full detect → security → diagnose → recover → verify loop
-run live in the event log.
+On the dashboard, pick any fault or attack from a device's menu (hardware spike, stuck value, dropout,
+network, gateway failure, drift, abrupt tampering, four kinds of stealthy false-data injection, on-off
+attacker, DoS flood, identity spoofing), or start a heatwave on a zone. You can then watch the cause
+probabilities, the evidence, the chosen action and the verified outcome.
 
-## API
+### Reproduce the paper's evaluation
 
-- `GET /api/devices` — current snapshot of every device's Digital Twin
-- `GET /api/events` — recent explainable event log
-- `POST /api/devices/{id}/inject` — body `{"fault_type": "HARDWARE|NETWORK|DRIFT|MALICIOUS"}`
-- `POST /api/devices/{id}/clear` — manually reset a device
-- `WS /ws` — live snapshot + event stream (what the dashboard uses)
-
-## Real hardware bridge (optional, tested)
-
-SentinelTwin doesn't just simulate — it can genuinely ingest telemetry
-from a real physical device over MQTT, through the exact same Digital
-Twin pipeline (same anomaly detector, security layer, diagnosis rules,
-trust scoring, and recovery engine) as the simulated fleet. This was
-built and verified end-to-end against a real local MQTT broker: a live
-device connects, gets diagnosed on a real induced fault, and **fails
-over to a simulated standby device** — proof the pipeline is genuinely
-data-source-agnostic, not hardcoded to the simulator.
-
-**Files:**
-- `mqtt_bridge.py` — subscribes to `sentineltwin/<device_id>/telemetry`,
-  enforces the security layer's firewall at the point of ingestion, and
-  feeds allowed messages into the same `DeviceTwin.push_reading()` the
-  simulator uses. Devices registered this way are tagged `is_real: true`
-  and show a "LIVE HARDWARE" badge on the dashboard.
-- `security.py` — the Firewall + RateTracker + fast attack-pattern
-  checks described above.
-- `arduino/sentineltwin_esp32.ino` — ESP32 + DHT22 sketch that publishes
-  real temperature/humidity/WiFi-RSSI-as-signal-strength readings on
-  the wire format the bridge expects. Edit the WiFi/broker constants at
-  the top and flash it.
-- `tools/test_publisher.py` — a CLI MQTT publisher that lets you verify
-  the bridge (and even simulate a fault, or a flood attack, on a "real"
-  device) without owning an ESP32 yet:
-  `python tools/test_publisher.py --fault network`
-  `python tools/test_publisher.py --fault flood`
-
-**To run it:**
 ```bash
-# 1. Start a local broker (one-time install)
-sudo apt-get install mosquitto mosquitto-clients
-mosquitto -d -p 1883
-
-# 2. Start SentinelTwin as usual — the bridge starts automatically
-#    and just logs a message if no broker is found (fully optional)
-uvicorn main:app --reload --port 8000
-
-# 3a. Either flash the ESP32 sketch pointed at this machine's IP, or
-# 3b. Simulate one with the test publisher:
-python tools/test_publisher.py --device-id REAL-TEMP-01
+python -m pytest -q                         # 20 end-to-end behaviour tests
+python -m experiments.tune                  # parameter choice on development seeds 1000-1019 only
+python -m experiments.run_all --seeds 30    # ~5,400 seeded episodes, all suites, ~35 min on 16 cores
+python -m experiments.report                # results/RESULTS.md, summary.json, figs/
+python tools/export_dataset.py --hours 6 --seed 7   # SentinelTwin-Bench labelled trace
 ```
-The device appears on the dashboard tagged LIVE HARDWARE within a
-couple of seconds and is covered by the same simulated standby pool
-(`BKP-TEMP-*` etc.) as every other device.
 
-## Ideas to extend further (not yet built)
+The Tier B (real physics) suite needs the Intel Berkeley Lab data (~34 MB):
+`http://db.csail.mit.edu/labdata/data.txt.gz` saved as `data/intel/data.txt.gz`.
 
-- Swap the rolling/baseline z-score for an `IsolationForest` (scikit-learn)
-  per device as a stated "AI" upgrade, keeping the current rule-engine
-  as the explainability layer on top of it.
-- Reconnaissance-style scan detection (port/topic enumeration) — the
-  literature notes this is a known weak spot for rate-based IDS
-  approaches like the one used here.
-- A network topology graph view (D3/force-directed) instead of the
-  zone-grid, to visualize reroute paths.
-- Persist event history to SQLite so a "post-incident report" can be
-  generated per device.
-- A confusion-matrix style accuracy report: inject N random faults,
-  compare diagnosed cause vs. ground truth, to quote a detection
-  accuracy % in the PPT.
+### Real hardware (optional)
+
+1. Run an MQTT broker (`mosquitto -p 1883`) and the server.
+2. Flash `arduino/sentineltwin_esp32.ino` (set Wi-Fi, broker IP, device id; optionally a 64-hex
+   `DEVICE_KEY_HEX` and a second DHT22 as a reference sensor).
+3. With MACs enabled, point `SENTINELTWIN_DEVICE_KEYS` at a JSON file `{"REAL-TEMP-01": "<hex key>"}`.
+4. Run the scripted hardware campaign and score it:
+   `python tools/hw_campaign.py --devices REAL-TEMP-01 --rounds 5`. This writes ground truth, incidents
+   and scores to `results/hw/`.
+
+No ESP32? `python tools/test_publisher.py --fault drift|ramp|flood|spoof|network|hardware` sends real
+MQTT traffic through the same path. Real devices are never compared with simulated ones as physical peers,
+so give a real zone at least three co-located sensors.
+
+### API
+
+- `GET /api/devices`, `GET /api/events`, `GET /api/incidents`
+- `POST /api/devices/{id}/inject` with body `{"fault_type": "...", "attacker": "...", "slope": 0.25}`
+- `POST /api/devices/{id}/clear`
+- `POST /api/zones/{zone}/heatwave` with body `{"magnitude_t": 6}`
+- `WS /ws` streams snapshots, events and incidents
+
+---
+
+## Related work this builds on (verified citations)
+
+- **Two-stage pipelines that separate anomaly flagging from causal diagnosis are an emerging design in
+  digital-twin IoT security.** Dutta et al. (*Scientific Reports* 16:15732, 2026,
+  doi:10.1038/s41598-026-47104-6) chain a contrastive-learning detector to a structural-causal
+  root-cause stage and a blockchain audit log. In simulation on N-BaIoT they report a 68% shorter mean
+  time to diagnosis and a 22% lower false-positive rate than benchmark IDS baselines. The paper does not
+  isolate the contribution of the stage split, so we cite it as precedent for the architecture, not as
+  evidence. SentinelTwin's own ablation (`no_security_layer`) tests that question directly.
+- **Lightweight statistical rate monitoring is a defensible first line of defence for digital-twin
+  traffic.** Rodrigues et al. (*Sensors* 25(24):7476, 2025, doi:10.3390/s25247476) flag packet or byte
+  rates above a μ+3σ baseline and observed a ~50× packet-rate rise during DoS in a Docker testbed.
+  `security.RateTracker` follows the same principle with a multiple of the learned cadence; both rules
+  are compared in the evaluation (`rate_mu3sigma`).
+- **Digital twins can detect compromised nodes that emit false data or attack neighbours.** Alanezi and
+  Mishra (*IEEE Systems Journal* 18(2), 2024, doi:10.1109/JSYST.2024.3403500) host per-node twins on a
+  fog server and detect misbehaving nodes with an MLP, treating erroneous data and attacks as one class.
+  SentinelTwin separates benign faults from attacks, so only attacks trigger firewalling.
+- El-Hajj (*Electronics* 13(19):3941, 2024, doi:10.3390/electronics13193941) paired an Eclipse Ditto
+  twin (Docker, PC) with a Raspberry Pi device and a Snort IDS. Hping3 floods were detected, but NMAP
+  scans raised only one or two alerts, and resource usage stayed elevated after attacks, which the author
+  notes "suggests the need for better recovery mechanisms". SentinelTwin shares the reconnaissance blind
+  spot and addresses the recovery gap.
+
+The full literature review (58 checked references, gaps, datasets, venues) is in
+[`reports/SentinelTwin research landscape.md`](reports/SentinelTwin%20research%20landscape.md).

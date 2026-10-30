@@ -1,249 +1,505 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
-<title>SentinelTwin — AI-Driven Self-Healing IoT Network</title>
+<title>SentinelTwin Dashboard</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  :root {
-    --bg: #0a0e14;
-    --panel: #10161f;
-    --panel-2: #141c28;
-    --border: #223046;
-    --text: #d7e2f0;
-    --muted: #7a8ba3;
-    --accent: #22d3c8;
-    --accent-dim: #0e7f78;
-    --normal: #2fbf71;
-    --suspect: #e8b93f;
-    --anomalous: #ef5b5b;
-    --isolated: #8a8f9c;
-    --recovering: #4a9cff;
-    --recovered: #22d3c8;
-    --mono: 'Consolas', 'SFMono-Regular', Menlo, monospace;
+  :root, :root[data-theme="dark"] {
+    --bg: #0b0f15; --panel: #111823; --panel-2: #161f2c; --panel-3: #1c2737; --border: #233148;
+    --text: #e3eaf3; --muted: #8494aa; --faint: #56657a;
+    --accent: #3987e5; --accent-2: #22d3c8;
+    --good: #2fbf71; --warning: #e8b93f; --serious: #ec835a; --critical: #ef5b5b;
+    --contained: #b48af7; --isolated: #8a8f9c; --recovering: #4a9cff; --recovered: #22d3c8;
+    --firewall: #ff3b7a;
+    --series-device: #3987e5; --series-consensus: #8494aa;
+    --shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 24px rgba(0,0,0,0.25);
+    --mono: 'JetBrains Mono', Consolas, 'SFMono-Regular', Menlo, monospace;
+    --sans: 'Inter', 'Segoe UI', Roboto, Arial, sans-serif;
+  }
+  :root[data-theme="light"] {
+    --bg: #f4f5f2; --panel: #ffffff; --panel-2: #f7f8f6; --panel-3: #eef0ec; --border: #dfe2dc;
+    --text: #15181d; --muted: #5d6470; --faint: #9aa1ab;
+    --accent: #2a78d6; --accent-2: #0e9e95;
+    --good: #0ca30c; --warning: #c98500; --serious: #d95926; --critical: #d03b3b;
+    --contained: #7c4fd6; --isolated: #6f7480; --recovering: #2a78d6; --recovered: #0e9e95;
+    --firewall: #d6246a;
+    --series-device: #2a78d6; --series-consensus: #7d8590;
+    --shadow: 0 1px 2px rgba(0,0,0,0.05), 0 6px 18px rgba(0,0,0,0.05);
   }
   * { box-sizing: border-box; }
-  body {
-    margin: 0; background: radial-gradient(circle at 20% 0%, #101927 0%, var(--bg) 55%);
-    color: var(--text); font-family: 'Segoe UI', Roboto, Arial, sans-serif; min-height: 100vh;
-  }
-  header {
-    padding: 18px 28px; border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: space-between;
-    background: linear-gradient(180deg, rgba(34,211,200,0.06), transparent);
-  }
-  header .brand { display: flex; align-items: center; gap: 12px; }
-  header .brand .dot {
-    width: 12px; height: 12px; border-radius: 50%; background: var(--accent);
-    box-shadow: 0 0 12px var(--accent); animation: pulse 2s infinite;
-  }
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
-  header h1 { font-size: 18px; margin: 0; letter-spacing: 0.5px; }
-  header p { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
-  #conn { font-family: var(--mono); font-size: 11px; padding: 5px 10px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
-  #conn.live { color: var(--normal); border-color: var(--normal); }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 13px; min-height: 100vh; }
+  button { font-family: inherit; }
 
-  .layout { display: grid; grid-template-columns: 1fr 380px; gap: 16px; padding: 20px 28px 40px; }
-  @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+  /* ---------- header ---------- */
+  header { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 18px; padding: 12px 22px;
+           background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 210px; }
+  .logo { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), var(--accent-2));
+          display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 13px; }
+  .brand h1 { margin: 0; font-size: 15px; letter-spacing: .3px; }
+  .brand p { margin: 1px 0 0; font-size: 11px; color: var(--muted); }
+  .pipeline { display: flex; align-items: center; gap: 4px; flex: 1; overflow-x: auto; scrollbar-width: none; }
+  .pipeline span { font-family: var(--mono); font-size: 10.5px; color: var(--muted); padding: 4px 8px; border: 1px solid var(--border);
+                   border-radius: 999px; white-space: nowrap; background: var(--panel); transition: all .25s; }
+  .pipeline span.hot { color: var(--text); border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+  .pipeline i { color: var(--faint); font-style: normal; font-size: 10px; }
+  .hdr-right { display: flex; align-items: center; gap: 8px; }
+  #conn { font-family: var(--mono); font-size: 11px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+  #conn.live { color: var(--good); border-color: color-mix(in srgb, var(--good) 50%, var(--border)); }
+  #conn.live::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--good);
+                       margin-right: 6px; animation: pulse 1.6s infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .icon-btn { background: var(--panel); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 5px 9px; cursor: pointer; font-size: 12px; }
+  .icon-btn:hover { color: var(--text); border-color: var(--accent); }
 
-  .zone-block { margin-bottom: 22px; }
-  .zone-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin: 0 0 10px 2px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+  /* ---------- KPIs ---------- */
+  .kpis { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; padding: 16px 22px 4px; }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 11px 13px; box-shadow: var(--shadow); }
+  .kpi .label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
+  .kpi .value { font-size: 22px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .kpi .value small { font-size: 12px; color: var(--muted); font-weight: 500; margin-left: 2px; }
+  .kpi .sub { font-size: 10.5px; color: var(--faint); margin-top: 2px; }
 
-  .card {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-    padding: 12px 14px; position: relative; overflow: hidden; transition: border-color 0.3s;
-  }
-  .card::before {
-    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
-    background: var(--state-color, var(--normal));
-  }
-  .card .top { display: flex; justify-content: space-between; align-items: flex-start; }
-  .card .id { font-family: var(--mono); font-size: 13px; font-weight: 600; }
-  .card .type { color: var(--muted); font-size: 11px; margin-top: 1px; }
-  .badge {
-    font-size: 10px; padding: 2px 7px; border-radius: 20px; font-weight: 600;
-    background: color-mix(in srgb, var(--state-color, var(--normal)) 20%, transparent);
-    color: var(--state-color, var(--normal)); border: 1px solid var(--state-color, var(--normal));
-    white-space: nowrap;
-  }
-  .metrics { margin-top: 10px; font-family: var(--mono); font-size: 11px; color: var(--muted); display: grid; gap: 3px; }
-  .metrics span.v { color: var(--text); }
-  .trust-row { margin-top: 10px; }
-  .trust-label { font-size: 10px; color: var(--muted); display: flex; justify-content: space-between; margin-bottom: 3px; }
-  .trust-bar { height: 5px; background: #1c2635; border-radius: 4px; overflow: hidden; }
-  .trust-fill { height: 100%; background: linear-gradient(90deg, var(--anomalous), var(--suspect), var(--normal)); }
-  .cause { margin-top: 8px; font-size: 11px; color: var(--state-color, var(--suspect)); font-family: var(--mono); }
-  .live-hw {
-    margin-top: 8px; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #0a0e14;
-    background: var(--accent); display: inline-block; padding: 2px 8px; border-radius: 20px;
-  }
-  .actions { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
-  .actions button {
-    flex: 1; min-width: 60px; background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
-    font-size: 10px; padding: 5px 4px; border-radius: 5px; cursor: pointer; font-family: var(--mono);
-  }
-  .actions button:hover { border-color: var(--accent); color: var(--accent); }
+  /* ---------- layout ---------- */
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 16px; padding: 12px 22px 40px; align-items: start; }
+  .side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 70px; max-height: calc(100vh - 84px); overflow-y: auto; scrollbar-width: thin; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 15px; box-shadow: var(--shadow); }
+  .panel h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1.1px; color: var(--muted); margin: 0 0 10px; font-weight: 600;
+              display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 
-  .side { display: flex; flex-direction: column; gap: 16px; }
-  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
-  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); margin: 0 0 10px; }
-  .stat-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--border); font-size: 12px; }
-  .stat-row:last-child { border-bottom: none; }
-  .stat-row b { color: var(--text); }
+  /* ---------- zones ---------- */
+  .zone { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin-bottom: 14px; box-shadow: var(--shadow); }
+  .zone-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  .zone-head h3 { margin: 0; font-size: 13px; letter-spacing: .4px; }
+  .chip { font-family: var(--mono); font-size: 10.5px; color: var(--muted); background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 3px 9px; text-transform: none; letter-spacing: 0; }
+  .chip b { color: var(--text); font-weight: 600; }
+  .chip.warn { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, var(--border)); }
+  .zone-head .spacer { flex: 1; }
+  .ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 4px 9px; font-size: 11px; cursor: pointer; }
+  .ghost:hover { color: var(--warning); border-color: var(--warning); }
+  .topo { width: 100%; height: 70px; display: block; margin-bottom: 8px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); gap: 10px; }
 
-  #log { height: 460px; overflow-y: auto; font-family: var(--mono); font-size: 11px; display: flex; flex-direction: column-reverse; gap: 6px; }
-  .log-entry { padding: 7px 8px; border-radius: 6px; background: var(--panel-2); border-left: 3px solid var(--muted); }
-  .log-entry .meta { color: var(--muted); font-size: 10px; margin-bottom: 2px; }
-  .log-entry.ANOMALY { border-color: var(--suspect); }
-  .log-entry.DIAGNOSIS { border-color: var(--anomalous); }
-  .log-entry.FIREWALL { border-color: #ff3b7a; background: rgba(255,59,122,0.08); }
-  .log-entry.RECOVERY { border-color: var(--recovering); }
-  .log-entry.VERIFIED { border-color: var(--recovered); }
-  .log-entry.INFO { border-color: var(--muted); }
+  .card { position: relative; background: var(--panel-2); border: 1px solid var(--border); border-radius: 11px; padding: 10px 11px 9px;
+          cursor: pointer; transition: border-color .2s, transform .15s; overflow: hidden; }
+  .card:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--state) 60%, var(--border)); }
+  .card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+  .card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--state); }
+  .card.backup { opacity: .78; }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .id { font-family: var(--mono); font-size: 12px; font-weight: 700; }
+  .type { color: var(--muted); font-size: 10.5px; }
+  .badge { font-size: 9.5px; font-weight: 700; letter-spacing: .4px; padding: 2px 7px; border-radius: 999px; white-space: nowrap; text-transform: none;
+           color: var(--state); background: color-mix(in srgb, var(--state) 14%, transparent); border: 1px solid color-mix(in srgb, var(--state) 55%, transparent); }
+  canvas.spark { width: 100%; height: 34px; display: block; margin: 7px 0 3px; }
+  .vals { display: flex; gap: 10px; font-family: var(--mono); font-size: 10.5px; color: var(--muted); flex-wrap: wrap; }
+  .vals b { color: var(--text); font-weight: 600; }
+  .trust { height: 3px; background: var(--panel-3); border-radius: 3px; overflow: hidden; margin-top: 7px; }
+  .trust div { height: 100%; background: linear-gradient(90deg, var(--critical), var(--warning), var(--good)); }
+  .cause { margin-top: 6px; font-size: 10.5px; font-family: var(--mono); color: var(--state); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 5px; }
+  .tag { font-size: 9px; font-weight: 700; letter-spacing: .3px; padding: 1px 6px; border-radius: 999px; border: 1px solid; }
+  .tag.hw { color: var(--accent-2); } .tag.fw { color: var(--firewall); } .tag.dt { color: var(--contained); } .tag.cv { color: var(--recovering); }
 
-  .flow { display: flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 10px; flex-wrap: wrap; color: var(--muted); }
-  .flow b { color: var(--accent); }
+  /* ---------- inspector ---------- */
+  .insp-empty { color: var(--muted); font-size: 12px; line-height: 1.6; }
+  .insp-title { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .insp-title .id { font-size: 15px; }
+  canvas.big { width: 100%; height: 120px; display: block; margin: 10px 0 2px; }
+  .legend { display: flex; gap: 12px; font-size: 10.5px; color: var(--muted); flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 5px; }
+  .section { margin-top: 13px; }
+  .section h4 { margin: 0 0 6px; font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .9px; font-weight: 600; }
+  .bar-row { display: grid; grid-template-columns: 112px 1fr 38px; gap: 8px; align-items: center; font-size: 11px; margin: 3px 0; }
+  .bar-row span:first-child { color: var(--muted); font-family: var(--mono); font-size: 10.5px; }
+  .bar { height: 6px; background: var(--panel-3); border-radius: 4px; overflow: hidden; }
+  .bar div { height: 100%; border-radius: 4px; background: var(--faint); }
+  .bar-row.top .bar div { background: var(--state); }
+  .bar-row b { text-align: right; font-variant-numeric: tabular-nums; font-size: 11px; }
+  .ev { font-size: 11px; line-height: 1.45; padding: 4px 0 4px 8px; border-left: 2px solid var(--border); margin: 3px 0; color: var(--text); }
+  .ev.pos { border-color: var(--accent); } .ev.neg { border-color: var(--faint); color: var(--muted); }
+  .ev code { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .timeline { position: relative; padding-left: 14px; }
+  .timeline::before { content: ""; position: absolute; left: 4px; top: 4px; bottom: 4px; width: 1px; background: var(--border); }
+  .tl { position: relative; font-size: 11px; margin: 0 0 7px; }
+  .tl::before { content: ""; position: absolute; left: -13px; top: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--dot, var(--accent)); }
+  .tl small { color: var(--faint); font-family: var(--mono); margin-right: 6px; }
+  .inject { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .inject button { text-align: left; background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 8px;
+                   padding: 6px 8px; font-size: 11px; cursor: pointer; line-height: 1.25; }
+  .inject button small { display: block; color: var(--faint); font-size: 9.5px; margin-top: 1px; }
+  .inject button:hover { border-color: var(--accent); }
+  .inject button.atk:hover { border-color: var(--critical); }
+  .inject button.reset { grid-column: span 2; text-align: center; color: var(--muted); }
+  .grp { font-size: 9.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 1px; grid-column: span 2; margin-top: 4px; }
+
+  /* ---------- incidents & log ---------- */
+  .inc { padding: 8px 0; border-bottom: 1px dashed var(--border); cursor: pointer; }
+  .inc:last-child { border-bottom: none; }
+  .inc .row { font-size: 11.5px; }
+  .inc .steps { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+  .step { font-family: var(--mono); font-size: 9.5px; padding: 1px 6px; border-radius: 5px; background: var(--panel-3); color: var(--muted); }
+  .outcome { font-size: 10px; font-weight: 700; }
+  .outcome.RECOVERED { color: var(--recovered); } .outcome.OPEN { color: var(--warning); } .outcome.MANUAL, .outcome.UNVERIFIED_CLOSE { color: var(--critical); }
+  .filters { display: flex; gap: 4px; flex-wrap: wrap; text-transform: none; letter-spacing: 0; }
+  .filters button { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 999px; padding: 2px 8px; font-size: 10px; cursor: pointer; }
+  .filters button.on { color: var(--text); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  #log { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; scrollbar-width: thin; }
+  .log { padding: 6px 8px; border-radius: 7px; background: var(--panel-2); border-left: 3px solid var(--faint); font-size: 11px; line-height: 1.4; }
+  .log .meta { color: var(--faint); font-family: var(--mono); font-size: 9.5px; margin-bottom: 1px; }
+  .log.ANOMALY { border-color: var(--warning); } .log.DIAGNOSIS { border-color: var(--serious); } .log.FIREWALL { border-color: var(--firewall); }
+  .log.RECOVERY { border-color: var(--recovering); } .log.VERIFIED { border-color: var(--recovered); }
+  .empty { color: var(--faint); font-size: 11.5px; padding: 6px 0; }
+
+  @media (max-width: 1180px) { .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; }
+    .side { position: static; max-height: none; }
+    .pipeline { display: none; }
+  }
+  @media (max-width: 560px) {
+    header, .kpis, .layout { padding-left: 16px; padding-right: 16px; }
+    .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .brand { min-width: 0; }
+  }
 </style>
 </head>
 <body>
 
 <header>
   <div class="brand">
-    <div class="dot"></div>
-    <div>
-      <h1>SentinelTwin</h1>
-      <p>AI-Driven Self-Healing IoT Network — Digital Twin + Real-Time Anomaly Diagnosis</p>
-    </div>
+    <div class="logo">ST</div>
+    <div><h1>SentinelTwin</h1><p>Self-healing IoT · digital twins</p></div>
   </div>
-  <div id="conn">connecting…</div>
+  <div class="pipeline" id="pipeline">
+    <span data-stage="monitor">Monitor</span><i>›</i><span data-stage="detect">Detect</span><i>›</i>
+    <span data-stage="security">Security layer</span><i>›</i><span data-stage="diagnose">Diagnose</span><i>›</i>
+    <span data-stage="respond">Respond</span><i>›</i><span data-stage="recover">Recover</span><i>›</i><span data-stage="verify">Verify</span>
+  </div>
+  <div class="hdr-right">
+    <button class="icon-btn" id="theme" title="Toggle light / dark">◐</button>
+    <div id="conn">connecting…</div>
+  </div>
 </header>
 
+<section class="kpis" id="kpis"></section>
+
 <div class="layout">
-  <div id="zones"></div>
-
-  <div class="side">
+  <main id="zones"></main>
+  <aside class="side">
+    <div class="panel" id="inspector"></div>
     <div class="panel">
-      <h2>Pipeline</h2>
-      <div class="flow">
-        <b>Monitor</b>→<b>Predict/Detect</b>→<b>Security Layer</b>→<b>Diagnose</b>→<b>Respond</b>→<b>Recover</b>→<b>Verify</b>
-      </div>
+      <h2>Incidents <span id="inc-count" class="chip"></span></h2>
+      <div id="incidents"></div>
     </div>
-
     <div class="panel">
-      <h2>Network Health</h2>
-      <div id="stats"></div>
-    </div>
-
-    <div class="panel" style="flex:1;">
-      <h2>Live Event Log</h2>
+      <h2>Event log
+        <span class="filters" id="filters">
+          <button data-act="filter" data-f="ALL" class="on">all</button><button data-act="filter" data-f="DIAGNOSIS">diagnosis</button>
+          <button data-act="filter" data-f="FIREWALL">firewall</button><button data-act="filter" data-f="RECOVERY">recovery</button>
+          <button data-act="filter" data-f="VERIFIED">verified</button><button data-act="filter" data-f="INFO">info</button>
+        </span>
+      </h2>
       <div id="log"></div>
     </div>
-  </div>
+  </aside>
 </div>
 
 <script>
-const stateColor = {
-  NORMAL: 'var(--normal)', SUSPECT: 'var(--suspect)', ANOMALOUS: 'var(--anomalous)',
-  ISOLATED: 'var(--isolated)', RECOVERING: 'var(--recovering)', RECOVERED: 'var(--recovered)'
+const STATE_VAR = { NORMAL: '--good', SUSPECT: '--warning', ANOMALOUS: '--critical', CONTAINED: '--contained',
+                    ISOLATED: '--isolated', RECOVERING: '--recovering', RECOVERED: '--recovered' };
+const SHORT = { HARDWARE_FAULT: 'hardware fault', NETWORK_FAILURE: 'network failure', UPSTREAM_FAILURE: 'upstream gateway',
+  GATEWAY_FAILURE: 'gateway failure', SENSOR_DRIFT: 'sensor drift', MALICIOUS_TAMPERING: 'tampering', STEALTHY_TAMPERING: 'stealth FDI',
+  DOS_FLOOD_ATTACK: 'DoS flood', IDENTITY_SPOOFING: 'spoofing', UNCLASSIFIED_ANOMALY: 'unclassified' };
+const ACTION = { OBSERVE: 'observe', RECALIBRATE: 'recalibrate', ACTIVATE_BACKUP: 'activate standby', REROUTE: 'reroute',
+  GATEWAY_FAILOVER: 'gateway failover', QUARANTINE: 'quarantine', DISTRUST_DATA: 'distrust data' };
+const FAULTS = [
+  ['grp', 'Benign faults'],
+  ['HARDWARE', 'Hardware spike', 'one channel jumps'], ['STUCK', 'Stuck value', 'frozen reading'],
+  ['DROPOUT', 'Dropout', 'readings go missing'], ['NETWORK', 'Network fault', 'link degrades'],
+  ['DRIFT', 'Sensor drift', 'slow calibration loss'],
+  ['grp', 'Attacks'],
+  ['TAMPER', 'Tampering', 'abrupt false data', 1], ['TAMPER_RAMP:fabricate', 'Stealth FDI', 'fabricated ramp', 1],
+  ['TAMPER_RAMP:inpath', 'Stealth FDI', 'in-path modifier', 1], ['TAMPER_RAMP:rogue', 'Stealth FDI', 'rogue publisher', 1],
+  ['TAMPER_RAMP:compromised', 'Stealth FDI', 'compromised device', 1], ['ON_OFF', 'On-off attacker', 'games trust', 1],
+  ['FLOOD', 'DoS flood', 'message storm', 1], ['SPOOF', 'Spoofing', 'impostor identity', 1]];
+const GW_FAULTS = [['grp', 'Gateway'], ['GATEWAY', 'Gateway failure', 'children lose links'], ['FLOOD', 'DoS flood', 'message storm', 1]];
+
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+const fmt = (v, d = 1) => (typeof v === 'number' ? v.toFixed(d) : '–');
+const stateVar = (s) => `var(${STATE_VAR[s] || '--good'})`;
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch { } } };
+
+let last = null, selected = new URLSearchParams(location.search).get('device') || store.get('st-selected'), logFilter = 'ALL';
+const theme = store.get('st-theme');
+if (theme) document.documentElement.dataset.theme = theme;
+document.getElementById('theme').onclick = () => {
+  const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = t; store.set('st-theme', t); if (last) render(last);
 };
 
-let ws;
+// ---------- websocket ----------
 function connect() {
-  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+  const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
   const conn = document.getElementById('conn');
-  ws.onopen = () => { conn.textContent = '● LIVE'; conn.classList.add('live'); };
+  ws.onopen = () => { conn.textContent = 'live'; conn.classList.add('live'); };
   ws.onclose = () => { conn.textContent = 'reconnecting…'; conn.classList.remove('live'); setTimeout(connect, 1500); };
-  ws.onmessage = (ev) => render(JSON.parse(ev.data));
+  ws.onmessage = (ev) => { last = JSON.parse(ev.data); render(last); };
 }
 connect();
 
-function fmtMetrics(vals) {
-  return Object.entries(vals).map(([k,v]) => `<div>${k}: <span class="v">${typeof v === 'number' ? v.toFixed(1) : v}</span></div>`).join('');
+// ---------- one delegated click handler (survives re-renders) ----------
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const act = el.dataset.act;
+  if (act === 'select') { selected = el.dataset.id; store.set('st-selected', selected); render(last); }
+  else if (act === 'inject') {
+    const [fault, attacker] = el.dataset.fault.split(':');
+    post(`/api/devices/${encodeURIComponent(selected)}/inject`, { fault_type: fault, attacker: attacker || null });
+  }
+  else if (act === 'reset') post(`/api/devices/${encodeURIComponent(selected)}/clear`);
+  else if (act === 'heat') post(`/api/zones/${encodeURIComponent(el.dataset.zone)}/heatwave`, { magnitude_t: 6 });
+  else if (act === 'filter') {
+    logFilter = el.dataset.f;
+    document.querySelectorAll('#filters button').forEach(b => b.classList.toggle('on', b.dataset.f === logFilter));
+    render(last);
+  }
+});
+
+// ---------- charts ----------
+function drawLine(canvas, series, opts = {}) {
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+  if (!w || !h) return;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, w, h);
+  const all = series.flatMap(s => s.data).filter(v => typeof v === 'number');
+  if (all.length < 2) {
+    ctx.fillStyle = css('--faint'); ctx.font = '10px sans-serif'; ctx.fillText('calibrating…', 2, h / 2 + 3); return;
+  }
+  let lo = Math.min(...all), hi = Math.max(...all);
+  if (opts.min !== undefined) lo = Math.min(lo, opts.min);
+  if (opts.max !== undefined) hi = Math.max(hi, opts.max);
+  const pad = (hi - lo) * 0.12 || 0.5; lo -= pad; hi += pad;
+  const n = Math.max(...series.map(s => s.data.length));
+  const X = i => (i / Math.max(1, n - 1)) * (w - 6) + 1, Y = v => h - 2 - ((v - lo) / (hi - lo)) * (h - 4);
+  if (opts.grid) {
+    ctx.strokeStyle = css('--border'); ctx.lineWidth = 1;
+    [0.25, 0.5, 0.75].forEach(f => { ctx.beginPath(); ctx.moveTo(0, h * f); ctx.lineTo(w, h * f); ctx.stroke(); });
+  }
+  if (opts.fillBetween && series.length >= 2) {           // residual band between device and consensus
+    const [a, b] = series; ctx.beginPath(); let started = false;
+    a.data.forEach((v, i) => { if (typeof v === 'number') { started ? ctx.lineTo(X(i), Y(v)) : ctx.moveTo(X(i), Y(v)); started = true; } });
+    for (let i = b.data.length - 1; i >= 0; i--) if (typeof b.data[i] === 'number') ctx.lineTo(X(i), Y(b.data[i]));
+    ctx.closePath(); ctx.globalAlpha = 0.14; ctx.fillStyle = css('--series-device'); ctx.fill(); ctx.globalAlpha = 1;
+  }
+  series.forEach(s => {
+    ctx.beginPath(); ctx.lineWidth = s.width || 2; ctx.strokeStyle = s.color; ctx.setLineDash(s.dash || []); ctx.lineJoin = 'round';
+    let started = false;
+    s.data.forEach((v, i) => { if (typeof v !== 'number') return; started ? ctx.lineTo(X(i), Y(v)) : ctx.moveTo(X(i), Y(v)); started = true; });
+    ctx.stroke(); ctx.setLineDash([]);
+    const li = s.data.length - 1;
+    if (s.dot && typeof s.data[li] === 'number') { ctx.beginPath(); ctx.arc(X(li), Y(s.data[li]), 2.6, 0, Math.PI * 2); ctx.fillStyle = s.color; ctx.fill(); }
+  });
+  if (opts.labels) {
+    ctx.fillStyle = css('--faint'); ctx.font = '9.5px ' + css('--mono');
+    ctx.fillText(fmt(hi - pad), 3, 10); ctx.fillText(fmt(lo + pad), 3, h - 4);
+  }
 }
 
+function sparkSeries(d, width) {
+  const s = d.spark || {};
+  const out = [{ data: s.v || [], color: css('--series-device'), width: width || 1.8, dot: true }];
+  if (s.c && s.c.length) out.push({ data: s.c, color: css('--series-consensus'), width: 1.2, dash: [3, 3] });
+  return out;
+}
+
+// ---------- topology strip ----------
+function topology(zone, devs) {
+  const gw = devs.find(d => d.device_type === 'gateway');
+  const nodes = devs.filter(d => d.device_type !== 'gateway');
+  const W = 1000, H = 70, gx = 46, step = (W - 160) / Math.max(1, nodes.length - 1);
+  const pos = {}; nodes.forEach((d, i) => pos[d.device_id] = [120 + i * step, 34]);
+  let svg = `<svg class="topo" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(zone)} topology">`;
+  nodes.forEach(d => {
+    const [x, y] = pos[d.device_id];
+    const sig = (d.last_values || {}).signal_strength, bad = typeof sig === 'number' && sig < 70;
+    const rehomed = gw && d.gateway_id && d.gateway_id !== gw.device_id;
+    if (d.is_backup) {
+      if (d.backup_for && pos[d.backup_for]) {
+        const [tx] = pos[d.backup_for];
+        svg += `<path d="M${x},${y} Q${(x + tx) / 2},4 ${tx},${y}" fill="none" stroke="${css('--recovering')}" stroke-width="1.6" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>`;
+      }
+      return;
+    }
+    const col = bad ? css('--critical') : rehomed ? css('--contained') : css('--border');
+    svg += `<line x1="${gx}" y1="34" x2="${x}" y2="${y}" stroke="${col}" stroke-width="${bad ? 2 : 1.3}" ${bad || rehomed ? 'stroke-dasharray="5 4"' : ''} vector-effect="non-scaling-stroke"/>`;
+  });
+  if (gw) svg += `<circle cx="${gx}" cy="34" r="13" fill="${css('--panel-2')}" stroke="${css(STATE_VAR[gw.state] || '--good')}" stroke-width="2.2" vector-effect="non-scaling-stroke"><title>${esc(gw.device_id)} · ${esc(gw.state)}</title></circle>
+                  <text x="${gx}" y="37.5" text-anchor="middle" font-size="9" font-weight="700" fill="${css('--text')}">GW</text>`;
+  nodes.forEach(d => {
+    const [x, y] = pos[d.device_id];
+    svg += `<circle cx="${x}" cy="${y}" r="${d.is_backup ? 5 : 7}" fill="${css(STATE_VAR[d.state] || '--good')}" stroke="${css('--panel')}" stroke-width="2" vector-effect="non-scaling-stroke">
+            <title>${esc(d.device_id)} · ${esc(d.state)}</title></circle>
+            <text x="${x}" y="${y + 22}" text-anchor="middle" font-size="9.5" font-family="${css('--mono')}" fill="${css('--muted')}">${esc(d.device_id)}</text>`;
+  });
+  return svg + '</svg>';
+}
+
+// ---------- render ----------
 function render(data) {
-  const devices = data.devices;
+  if (!data) return;
+  renderKpis(data.stats || {}, data.devices);
+  renderPipeline(data.devices);
+  renderZones(data);
+  renderInspector(data);
+  renderIncidents(data.incidents || []);
+  renderLog(data.events || []);
+}
+
+function renderKpis(s, devices) {
+  const tiles = [
+    ['Healthy devices', `${s.healthy ?? '–'}<small>/ ${s.devices ?? devices.length}</small>`, 'normal or verified-recovered'],
+    ['Open incidents', s.open ?? 0, 'diagnosed, not yet verified'],
+    ['Verified recoveries', s.recovered ?? 0, `${s.incidents ?? 0} incidents total`],
+    ['Attacks contained', s.attacks_contained ?? 0, 'quarantined by the loop'],
+    ['Median MTTR', s.median_mttr != null ? `${s.median_mttr}<small>s</small>` : '–', 'detect → verified healthy'],
+    ['Firewall blocks', s.active_blocks ?? 0, `${s.messages_dropped ?? 0} msgs dropped`],
+    ['Data distrusted', s.distrusted ?? 0, 'online, excluded from consensus'],
+  ];
+  document.getElementById('kpis').innerHTML = tiles.map(([l, v, sub]) =>
+    `<div class="kpi"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${sub}</div></div>`).join('');
+}
+
+function renderPipeline(devices) {
+  const has = st => devices.some(d => d.state === st);
+  const hot = { monitor: true, detect: has('SUSPECT'), security: devices.some(d => d.firewall_blocked),
+                diagnose: has('ANOMALOUS'), respond: has('CONTAINED') || has('ISOLATED'), recover: has('RECOVERING'), verify: has('RECOVERING') };
+  document.querySelectorAll('#pipeline span').forEach(s => s.classList.toggle('hot', !!hot[s.dataset.stage]));
+}
+
+function renderZones(data) {
   const zones = {};
-  devices.forEach(d => { (zones[d.zone] = zones[d.zone] || []).push(d); });
-
-  const zonesEl = document.getElementById('zones');
-  zonesEl.innerHTML = Object.entries(zones).map(([zone, devs]) => `
-    <div class="zone-block">
-      <div class="zone-title">${zone}</div>
-      <div class="grid">
-        ${devs.map(cardHtml).join('')}
+  data.devices.forEach(d => (zones[d.zone] = zones[d.zone] || []).push(d));
+  const el = document.getElementById('zones');
+  el.innerHTML = Object.entries(zones).map(([zone, devs]) => {
+    const c = (data.zones || {})[zone];
+    const env = data.events.slice().reverse().find(e => e.device_id === zone && e.message.includes('ENVIRONMENT'));
+    const envChip = env && (data.server_time - env.ts) < 60 ? `<span class="chip warn">☀ room changing — not a fault</span>` : '';
+    devs.sort((a, b) => (a.is_backup - b.is_backup) || ((a.device_type === 'gateway') - (b.device_type === 'gateway')));
+    return `<section class="zone">
+      <div class="zone-head"><h3>${esc(zone)}</h3>
+        ${c ? `<span class="chip">room <b>${fmt(c.T)}°C</b> · <b>${fmt(c.H)}%RH</b></span>` : ''}${envChip}
+        <span class="spacer"></span>
+        ${zone !== 'Zone-Live' ? `<button class="ghost" data-act="heat" data-zone="${esc(zone)}">☀ heatwave +6°C</button>` : ''}
       </div>
-    </div>
-  `).join('');
-
-  // wire up buttons
-  zonesEl.querySelectorAll('[data-inject]').forEach(btn => {
-    btn.onclick = () => fetch(`/api/devices/${btn.dataset.id}/inject`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({fault_type: btn.dataset.inject})
-    });
+      ${topology(zone, devs)}
+      <div class="grid">${devs.map(cardHtml).join('')}</div>
+    </section>`;
+  }).join('');
+  el.querySelectorAll('canvas.spark').forEach(cv => {
+    const d = data.devices.find(x => x.device_id === cv.dataset.id);
+    if (d) drawLine(cv, sparkSeries(d));
   });
-  zonesEl.querySelectorAll('[data-clear]').forEach(btn => {
-    btn.onclick = () => fetch(`/api/devices/${btn.dataset.id}/clear`, {method: 'POST'});
-  });
-
-  // stats
-  const counts = {};
-  devices.forEach(d => counts[d.state] = (counts[d.state]||0)+1);
-  document.getElementById('stats').innerHTML = Object.entries(counts).map(([s,c]) =>
-    `<div class="stat-row"><span>${s}</span><b style="color:${stateColor[s]}">${c}</b></div>`
-  ).join('') + `<div class="stat-row"><span>Total devices</span><b>${devices.length}</b></div>`;
-
-  // log
-  const logEl = document.getElementById('log');
-  logEl.innerHTML = data.events.map(e => `
-    <div class="log-entry ${e.kind}">
-      <div class="meta">${new Date(e.ts*1000).toLocaleTimeString()} · ${e.device_id} · ${e.kind}</div>
-      <div>${e.message}</div>
-    </div>
-  `).join('');
 }
 
 function cardHtml(d) {
-  const color = stateColor[d.state] || 'var(--normal)';
-  const trustPct = Math.round(d.trust_score * 100);
-  const causeHtml = d.root_cause ? `<div class="cause">⚠ ${d.root_cause} (${Math.round(d.root_cause_confidence*100)}% conf.)</div>` : '';
-  const rerouteHtml = d.rerouted_to ? `<div class="cause" style="color:var(--recovering)">↪ rerouted → ${d.rerouted_to}</div>` : '';
-  const backupTag = d.is_backup ? ' · standby' : '';
-  const liveTag = d.is_real ? `<div class="live-hw">🛰 LIVE HARDWARE</div>` : '';
-  const fwTag = d.firewall_blocked ? `<div class="live-hw" style="background:#ff3b7a;color:#fff">🛡 FIREWALL BLOCKED</div>` : '';
-  const actions = d.is_backup ? '' : `
-    <div class="actions">
-      <button data-id="${d.device_id}" data-inject="HARDWARE">HW fault</button>
-      <button data-id="${d.device_id}" data-inject="NETWORK">Net fault</button>
-      <button data-id="${d.device_id}" data-inject="DRIFT">Drift</button>
-      <button data-id="${d.device_id}" data-inject="MALICIOUS">Spoof</button>
-      <button data-id="${d.device_id}" data-clear="1">Reset</button>
-    </div>`;
-  return `
-    <div class="card" style="--state-color:${color}">
-      <div class="top">
-        <div>
-          <div class="id">${d.device_id}</div>
-          <div class="type">${d.device_type}${backupTag}</div>
-        </div>
-        <div class="badge">${d.state}</div>
-      </div>
-      ${liveTag}
-      ${fwTag}
-      <div class="metrics">${fmtMetrics(d.last_values)}</div>
-      <div class="trust-row">
-        <div class="trust-label"><span>trust</span><span>${trustPct}%</span></div>
-        <div class="trust-bar"><div class="trust-fill" style="width:${trustPct}%"></div></div>
-      </div>
-      ${causeHtml}
-      ${rerouteHtml}
-      ${actions}
-    </div>
-  `;
+  const v = d.last_values || {};
+  const sensed = Object.entries(v).filter(([k]) => !['battery', 'signal_strength', 'packet_loss'].includes(k)).slice(0, 2);
+  const diagnosed = d.root_cause && !['NORMAL', 'RECOVERED'].includes(d.state);
+  const tags = [
+    d.is_real ? `<span class="tag hw">LIVE HW</span>` : '',
+    d.firewall_blocked ? `<span class="tag fw">FIREWALLED</span>` : '',
+    !d.data_trusted ? `<span class="tag dt">DISTRUSTED</span>` : '',
+    d.backup_for ? `<span class="tag cv">covering ${esc(d.backup_for)}</span>` : ''].join('');
+  return `<div class="card ${d.is_backup ? 'backup' : ''} ${d.device_id === selected ? 'selected' : ''}" style="--state:${stateVar(d.state)}"
+               data-act="select" data-id="${esc(d.device_id)}">
+    <div class="row"><div><div class="id">${esc(d.device_id)}</div><div class="type">${esc(d.device_type.replace('_', ' '))}${d.is_backup ? ' · standby' : ''}</div></div>
+      <span class="badge">${esc(d.state)}</span></div>
+    <canvas class="spark" data-id="${esc(d.device_id)}"></canvas>
+    <div class="vals">${sensed.map(([k, x]) => `<span>${esc(k.replace('_ambient', ' amb').replace('_', ' '))} <b>${fmt(x)}</b></span>`).join('')}
+      <span>sig <b>${fmt(v.signal_strength, 0)}</b></span></div>
+    <div class="trust" title="trust ${Math.round(d.trust_score * 100)}%"><div style="width:${Math.round(d.trust_score * 100)}%"></div></div>
+    ${diagnosed ? `<div class="cause">⚠ ${esc(SHORT[d.root_cause] || d.root_cause)} · ${Math.round(d.root_cause_confidence * 100)}%</div>` : ''}
+    ${d.current_action ? `<div class="cause" style="color:var(--recovering)">⚙ ${esc(ACTION[d.current_action] || d.current_action)}</div>` : ''}
+    ${tags ? `<div class="tags">${tags}</div>` : ''}
+  </div>`;
 }
-</script>
 
+function renderInspector(data) {
+  const el = document.getElementById('inspector');
+  const d = data.devices.find(x => x.device_id === selected);
+  if (!d) {
+    el.innerHTML = `<h2>Device inspector</h2><div class="insp-empty">Select any device to see its reading against the zone
+      consensus, the cause probabilities and the evidence behind them, and to inject faults or attacks.</div>`;
+    return;
+  }
+  const diagnosed = d.root_cause && !['NORMAL', 'RECOVERED'].includes(d.state);
+  const probs = Object.entries(d.posterior || {});
+  const evidence = (d.explanation || []).map(w => {
+    const m = w.match(/^([+-]?\d+\.\d)\s+(\S+):\s*(.*)$/);
+    return m ? `<div class="ev ${m[1].startsWith('-') ? 'neg' : 'pos'}"><code>${esc(m[1])} ${esc(SHORT[m[2]] || m[2])}</code><br>${esc(m[3])}</div>`
+             : `<div class="ev">${esc(w)}</div>`;
+  }).join('');
+  const incs = (data.incidents || []).filter(i => i.device_id === d.device_id).slice(-1);
+  const timeline = incs.length ? incs.map(i => {
+    const t0 = i.t_detect;
+    const items = [[t0, 'detected', '--warning'], [i.t_diagnose, `diagnosed ${SHORT[i.cause] || i.cause}`, '--serious'],
+      ...i.actions.map(a => [a.t, `${ACTION[a.action] || a.action}`, '--recovering']),
+      ...(i.t_verified ? [[i.t_verified, i.outcome === 'RECOVERED' ? 'verified healthy' : i.outcome.toLowerCase(), '--recovered']] : [])];
+    return `<div class="timeline">${items.map(([t, label, col]) =>
+      `<div class="tl" style="--dot:var(${col})"><small>+${fmt(t - t0, 0)}s</small>${esc(label)}</div>`).join('')}</div>`;
+  }).join('') : '<div class="empty">No incident on this device yet.</div>';
+  const faults = (d.device_type === 'gateway' ? GW_FAULTS : FAULTS).map(f => f[0] === 'grp'
+    ? `<div class="grp">${f[1]}</div>`
+    : `<button class="${f[3] ? 'atk' : ''}" data-act="inject" data-fault="${f[0]}">${f[1]}<small>${f[2]}</small></button>`).join('');
+  const spark = d.spark || {};
+  el.innerHTML = `<h2>Device inspector <span class="badge" style="--state:${stateVar(d.state)}">${esc(d.state)}</span></h2>
+    <div class="insp-title"><span class="id">${esc(d.device_id)}</span><span class="type">${esc(d.device_type)} · ${esc(d.zone)}
+      ${d.gateway_id ? ' · via ' + esc(d.gateway_id) : ''}</span></div>
+    <canvas class="big" id="insp-chart"></canvas>
+    <div class="legend"><span><i style="background:var(--series-device)"></i>${esc(spark.metric || 'reading')}</span>
+      ${spark.c && spark.c.length ? `<span><i style="background:var(--series-consensus)"></i>zone consensus (peers)</span>` : ''}</div>
+    ${diagnosed ? `<div class="section"><h4>Cause probabilities</h4>${probs.map(([c, p], i) =>
+        `<div class="bar-row ${i === 0 ? 'top' : ''}" style="--state:${stateVar(d.state)}"><span>${esc(SHORT[c] || c)}</span>
+          <div class="bar"><div style="width:${Math.round(p * 100)}%"></div></div><b>${Math.round(p * 100)}%</b></div>`).join('')}</div>
+      <div class="section"><h4>Why — evidence</h4>${evidence || '<div class="empty">—</div>'}</div>` : ''}
+    <div class="section"><h4>Trust</h4><canvas class="big" id="insp-trust" style="height:46px"></canvas></div>
+    <div class="section"><h4>Closed loop</h4>${timeline}</div>
+    ${d.is_backup || d.is_real ? '' : `<div class="section"><h4>Inject</h4><div class="inject">${faults}
+      <button class="reset" data-act="reset">↺ reset device</button></div></div>`}`;
+  drawLine(document.getElementById('insp-chart'), sparkSeries(d, 2.2), { grid: true, labels: true, fillBetween: true });
+  const th = (data.trust_history || {})[d.device_id] || [];
+  drawLine(document.getElementById('insp-trust'), [{ data: th, color: css('--accent-2'), width: 2, dot: true }], { min: 0, max: 1, grid: true });
+}
+
+function renderIncidents(incs) {
+  document.getElementById('inc-count').textContent = `${incs.length} recent`;
+  const el = document.getElementById('incidents');
+  if (!incs.length) { el.innerHTML = '<div class="empty">No incidents yet — select a device and inject a fault.</div>'; return; }
+  el.innerHTML = incs.slice().reverse().slice(0, 12).map(i => `
+    <div class="inc" data-act="select" data-id="${esc(i.device_id)}">
+      <div class="row"><span><b class="id">${esc(i.device_id)}</b> · ${esc(SHORT[i.cause] || i.cause)} ${Math.round(i.confidence * 100)}%</span>
+        <span class="outcome ${esc(i.outcome)}">${esc(i.outcome.toLowerCase())}${i.t_verified ? ` · ${fmt(i.t_verified - i.t_detect, 0)}s` : ''}</span></div>
+      <div class="steps">${i.actions.map(a => `<span class="step">${esc(ACTION[a.action] || a.action)}</span>`).join('<span class="step">→</span>')}
+        ${i.escalations ? `<span class="step" style="color:var(--serious)">${i.escalations}× escalated</span>` : ''}</div>
+    </div>`).join('');
+}
+
+function renderLog(events) {
+  const shown = events.filter(e => logFilter === 'ALL' || e.kind === logFilter).slice().reverse();
+  document.getElementById('log').innerHTML = shown.length ? shown.map(e => `
+    <div class="log ${esc(e.kind)}"><div class="meta">${new Date(e.ts * 1000).toLocaleTimeString()} · ${esc(e.device_id)} · ${esc(e.kind)}</div>
+      ${esc(e.message)}</div>`).join('') : '<div class="empty">Nothing here yet.</div>';
+}
+
+window.addEventListener('resize', () => last && render(last));
+</script>
 </body>
 </html>
